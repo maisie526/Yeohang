@@ -1306,7 +1306,7 @@ document.addEventListener('compositionend', () => {
 function schedule(inst) {
   if (!current || current.inst !== inst || pending) return;
   pending = true;
-  queueMicrotask(() => { pending = false; if (composing) { dirty = true; return; } draw(false); });
+  queueMicrotask(() => { pending = false; if (composing) { if (!drawAround()) dirty = true; return; } draw(false); });
 }
 
 const app = document.getElementById('app');
@@ -1332,6 +1332,35 @@ function draw(isNav) {
     const nf = app.querySelectorAll('input, textarea, select')[fi];
     if (nf) { nf.focus({ preventScroll: true }); try { if (sel) nf.setSelectionRange(sel[0], sel[1]); } catch (e) {} }
   }
+}
+
+// 한글 조합 중: 입력 중인 칸과 그 상위 요소는 그대로 두고 나머지만 새로 그림 (검색 결과가 타이핑에 맞춰 바로 바뀌게)
+function drawAround() {
+  const act = document.activeElement;
+  if (!act || !app.contains(act) || !/^(INPUT|TEXTAREA)$/.test(act.tagName)) return false;
+  let vals = {};
+  try { vals = current.inst.renderVals() || {}; } catch (e) { console.error(e); return false; }
+  const frag = document.createElement('div');
+  renderNodes(current.tpl.childNodes, vals, frag);
+  const patch = (oldP, newP) => {
+    const oc = Array.from(oldP.childNodes), nc = Array.from(newP.childNodes);
+    if (oc.length !== nc.length) return false;
+    for (let i = 0; i < oc.length; i++) {
+      const o = oc[i], n = nc[i];
+      if (o === act) { if (n.nodeName !== o.nodeName) return false; continue; }
+      if (o.nodeType === 1 && o.contains(act)) {
+        if (n.nodeType !== 1 || n.nodeName !== o.nodeName) return false;
+        Array.from(n.attributes).forEach((a) => { if (o.getAttribute(a.name) !== a.value) o.setAttribute(a.name, a.value); });
+        if (!patch(o, n)) return false;
+      } else o.replaceWith(n);
+    }
+    return true;
+  };
+  const ok = patch(app, frag);
+  const root = app.querySelector('[data-root]');
+  if (root) pinFixed(root);
+  mountMaps(app);
+  return ok;
 }
 
 function go(full) {
