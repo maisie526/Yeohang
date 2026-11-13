@@ -287,25 +287,38 @@
     readSet() { try { return new Set(JSON.parse(LS.get('yh-read') || '[]')); } catch (e) { return new Set(); } },
     markRead(ids) { const s = this.readSet(); ids.forEach((i) => s.add(i)); LS.set('yh-read', JSON.stringify([...s].slice(-400))); },
     // ---- 구글 장소 (Places API New) ----
-    gCat(types) { const t = (types || []).join(' '); if (/cafe|bakery|coffee/.test(t)) return 'cafe'; if (/restaurant|food|bar|meal/.test(t)) return 'food'; if (/store|shopping|market|mall/.test(t)) return 'shop'; if (/lodging|hotel/.test(t)) return 'stay'; return 'sight'; },
+    gCat(types, primary) {
+      const L = [primary].concat(types || []).filter(Boolean);
+      const has = (re) => L.some((x) => re.test(x));
+      const pt = primary || '';
+      if (/(^|_)(cafe|coffee_shop|bakery|tea_house|dessert)/.test(pt)) return 'cafe';
+      if (/store|shopping|market|mall|supermarket|grocery/.test(pt) && !/restaurant/.test(pt)) return 'shop';
+      if (/restaurant|bar|izakaya|ramen|sushi|food_court|meal_|diner|pub/.test(pt)) return 'food';
+      if (has(/^(cafe|coffee_shop|bakery)$/)) return 'cafe';
+      if (has(/restaurant|^bar$|meal_takeaway|meal_delivery|food_court/)) return 'food';
+      if (has(/store|shopping_mall|market|supermarket|department_store/)) return 'shop';
+      if (has(/lodging|hotel/)) return 'stay';
+      if (has(/^food$/)) return 'food';
+      return 'sight';
+    },
     async gPlaces() { if (!(window.google && google.maps && google.maps.importLibrary)) throw new Error('nogm'); return google.maps.importLibrary('places'); },
     async searchPlaces(q, city) {
       const { Place } = await this.gPlaces();
       const C = this.cityInfo(city);
-      const req = { textQuery: city && !q.includes(city) ? q + ' ' + city : q, fields: ['id', 'displayName', 'formattedAddress', 'location', 'types'], language: 'ko', maxResultCount: 8 };
+      const req = { textQuery: city && !q.includes(city) ? q + ' ' + city : q, fields: ['id', 'displayName', 'formattedAddress', 'location', 'types', 'primaryType'], language: 'ko', maxResultCount: 8 };
       if (C) req.locationBias = { lat: C.center[0], lng: C.center[1] };
       const { places } = await Place.searchByText(req);
-      return (places || []).map((p) => ({ place_id: p.id, name: p.displayName, addr: p.formattedAddress || '', lat: p.location ? p.location.lat() : null, lng: p.location ? p.location.lng() : null, cat: this.gCat(p.types) }));
+      return (places || []).map((p) => ({ place_id: p.id, name: p.displayName, addr: p.formattedAddress || '', lat: p.location ? p.location.lat() : null, lng: p.location ? p.location.lng() : null, cat: this.gCat(p.types, p.primaryType) }));
     },
     async placeInfo(pid) {
       const { Place } = await this.gPlaces();
       const p = new Place({ id: pid, requestedLanguage: 'ko' });
-      await p.fetchFields({ fields: ['displayName', 'formattedAddress', 'location', 'rating', 'userRatingCount', 'regularOpeningHours', 'editorialSummary', 'photos', 'googleMapsURI', 'types'] });
+      await p.fetchFields({ fields: ['displayName', 'formattedAddress', 'location', 'rating', 'userRatingCount', 'regularOpeningHours', 'editorialSummary', 'photos', 'googleMapsURI', 'types', 'primaryType'] });
       let hours = '';
       try { const w = p.regularOpeningHours && p.regularOpeningHours.weekdayDescriptions; if (w && w.length) { const i = (new Date().getDay() + 6) % 7; hours = (w[i] || '').replace(/^[^:]+:\s*/, ''); } } catch (e) {}
       let photo = '';
       try { if (p.photos && p.photos[0]) photo = p.photos[0].getURI({ maxWidth: 900 }); } catch (e) {}
-      return { name: p.displayName, addr: p.formattedAddress || '', lat: p.location ? p.location.lat() : null, lng: p.location ? p.location.lng() : null, rating: p.rating || null, count: p.userRatingCount || 0, hours, summary: (p.editorialSummary && (p.editorialSummary.text || p.editorialSummary)) || '', photo, url: p.googleMapsURI || '', cat: this.gCat(p.types) };
+      return { name: p.displayName, addr: p.formattedAddress || '', lat: p.location ? p.location.lat() : null, lng: p.location ? p.location.lng() : null, rating: p.rating || null, count: p.userRatingCount || 0, hours, summary: (p.editorialSummary && (p.editorialSummary.text || p.editorialSummary)) || '', photo, url: p.googleMapsURI || '', cat: this.gCat(p.types, p.primaryType) };
     },
     // ---- 위키백과 요약 (사진 + 두 문장) ----
     async wiki(name, city) {
