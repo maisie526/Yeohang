@@ -1,5 +1,5 @@
 // 여행 앱 서비스 워커: 앱 화면(index.html)만 저장해 두고, 서버 데이터는 항상 실시간으로 받아요.
-const CACHE = 'ttona-v13';
+const CACHE = 'ttona-v14';
 const SHELL = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png', './icon.svg'];
 self.addEventListener('install', (e) => { e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting())); });
 self.addEventListener('activate', (e) => { e.waitUntil(caches.keys().then((ks) => Promise.all(ks.filter((k) => k !== CACHE).map((k) => caches.delete(k)))).then(() => self.clients.claim())); });
